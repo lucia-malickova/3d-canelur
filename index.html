@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Safe Haven AR Simulator</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Share+Tech+Mono&display=swap">
+<style>
+:root{
+  --bg:#0b0d0f; --panel:rgba(8,12,14,.88); --line:rgba(255,255,255,.14);
+  --fg:#EEF4F5; --mut:rgba(238,244,245,.62); --faint:rgba(238,244,245,.38);
+  --ac:#00E5FF; --ok:#00E676; --warn:#FFC400; --bad:#FF5252; --gold:#FFD54F;
+  --mono:'Share Tech Mono',ui-monospace,monospace; --sans:'Inter',system-ui,sans-serif;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font:14px/1.4 var(--sans);overflow:hidden}
+#cv{position:fixed;inset:0;width:100%;height:100%;touch-action:none;cursor:grab}
+#cv:active{cursor:grabbing}
+button{font:inherit;color:inherit;cursor:pointer}
+
+/* HUD top-left */
+#hudtl{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:max(14px,env(safe-area-inset-left,0px));z-index:20;pointer-events:none}
+.brand{font:12px var(--mono);letter-spacing:.2em;color:var(--ac);display:flex;align-items:center;gap:8px}
+.brand i{width:7px;height:7px;border-radius:50%;background:var(--ac);box-shadow:0 0 8px var(--ac);animation:pl 1.6s infinite}
+@keyframes pl{50%{opacity:.25}}
+.fac{font:700 18px var(--sans);margin-top:2px}
+.mut{color:var(--mut);font-size:12px}
+
+/* instruction card */
+#instr{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:25;pointer-events:none;
+  width:min(560px,calc(100vw - 32px));background:var(--panel);border:1px solid var(--ac);border-left-width:4px;border-radius:6px;padding:10px 16px}
+.chip{font:11px var(--mono);letter-spacing:.18em;color:var(--ac)}
+#imain{font:700 17px/1.25 var(--sans);margin-top:3px;text-wrap:balance}
+#isub{font-size:13px;color:var(--mut);margin-top:3px}
+#isub b{font-weight:700}
+.ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+
+/* side panel */
+#panel{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:68px;width:280px;z-index:30;
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+#panel[hidden]{display:none!important}
+.ptitle{font:11px var(--mono);letter-spacing:.2em;color:var(--faint)}
+#fgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.fb{padding:7px 4px;border-radius:5px;border:1px solid var(--line);background:transparent;text-align:center}
+.fb b{display:block;font:700 14px var(--sans);color:var(--c)}
+.fb span{font:10px var(--mono);color:var(--faint);letter-spacing:.1em}
+.fb.on{border-color:var(--c);background:rgba(255,255,255,.06)}
+#inset{width:100%;height:136px;display:block;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:6px}
+.sl{display:flex;flex-direction:column;gap:2px}
+.sl label{display:flex;justify-content:space-between;font-size:12px;color:var(--mut)}
+.sl label output{font:13px var(--mono);color:var(--fg)}
+.sl input{width:100%;accent-color:var(--ac)}
+.note{font-size:11px;color:var(--faint);line-height:1.4}
+#gear{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:max(12px,env(safe-area-inset-right,0px));z-index:31;width:36px;height:36px;border-radius:6px;
+  border:1px solid var(--line);background:var(--panel);display:none}
+
+/* bottom bar */
+#bar{position:fixed;left:0;right:0;bottom:0;height:56px;z-index:40;background:rgba(5,8,10,.92);border-top:1px solid var(--line);
+  display:flex;align-items:center;gap:12px;padding:0 max(14px,env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) max(14px,env(safe-area-inset-left,0px))}
+#lvl{font:700 13px var(--sans);color:var(--gold);letter-spacing:.06em;white-space:nowrap}
+#xpw{flex:1;min-width:60px;height:10px;border-radius:5px;background:rgba(255,255,255,.1);overflow:hidden}
+#xpf{height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--ok));transition:width .5s}
+#xpt{font:13px var(--mono);color:var(--ok);white-space:nowrap}
+#stk,#bnd{font:13px var(--mono);color:var(--mut);white-space:nowrap}
+#stk.hot{color:var(--gold)}
+.bb{padding:7px 12px;border-radius:5px;border:1px solid var(--line);background:rgba(255,255,255,.04);font-size:13px;white-space:nowrap}
+.bb.on{border-color:var(--ac);color:var(--ac)}
+
+/* toast */
+#toast{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%) scale(.9);z-index:50;pointer-events:none;opacity:0;transition:opacity .2s,transform .2s;
+  background:var(--panel);border:1px solid var(--ok);border-radius:10px;padding:14px 26px;text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.tb{font:700 30px var(--sans);color:var(--gold)}
+.ts{font-size:14px;color:var(--mut);margin-top:2px}
+
+/* done overlay */
+#done{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(0,0,0,.55)}
+#done .card{background:var(--panel);border:1px solid var(--ac);border-radius:12px;padding:24px 28px;text-align:center;width:min(440px,calc(100vw - 32px))}
+.dt{font:700 22px var(--sans);color:var(--ac)}
+.ds{color:var(--mut);margin:8px 0 16px}
+#done .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+
+#qr{position:fixed;inset:0;z-index:70;display:grid;place-items:center;background:rgba(0,0,0,.72)}
+#qr .card{background:#fff;color:#111;border-radius:14px;padding:22px;text-align:center;width:min(360px,calc(100vw - 32px))}
+#qrbox{display:grid;place-items:center;margin:14px 0}
+#qrbox img,#qrbox canvas{width:260px;height:260px;max-width:100%}
+.qt{font:700 18px var(--sans);text-wrap:balance}
+.qu{font:12px var(--mono);word-break:break-all;color:#444;user-select:all}
+#qrClose{margin-top:12px;color:#111;border-color:#ccc;background:#f3f3f3}
+@media (max-width:900px){
+  #gear{display:block}
+  #panel{top:54px}
+  #hudtl{display:none}
+  #instr{top:calc(54px + env(safe-area-inset-top,0px))}
+}
+@media (max-width:560px){ #stk,#bnd,#xpt,#bReset{display:none} #imain{font-size:15px} #bar{gap:8px} .bb{padding:7px 9px} }
+</style>
+
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="hudtl">
+  <div class="brand"><i></i>SAFE HAVEN AR</div>
+  <div class="fac" id="fac">NNE · SURF</div>
+  <div class="mut" id="sim"></div>
+</div>
+
+<div id="instr"><div class="chip" id="istep"></div><div id="imain"></div><div id="isub"></div></div>
+
+<button id="gear" aria-label="Parameters">⚙</button>
+<aside id="panel">
+  <div class="ptitle" data-i="facades"></div>
+  <div id="fgrid"></div>
+  <div class="ptitle" data-i="params"></div>
+  <canvas id="inset"></canvas>
+  <div id="sliders"></div>
+  <p class="note" data-i="note"></p>
+  <p class="note" data-i="hint"></p>
+</aside>
+
+<div id="toast"><div class="tb"></div><div class="ts"></div></div>
+<div id="done" hidden><div class="card"><div class="dt"></div><div class="ds"></div>
+  <div class="row"><button class="bb" id="again"></button><button class="bb on" id="nextf"></button></div></div></div>
+
+<footer id="bar">
+  <div id="lvl"></div><div id="xpw"><div id="xpf"></div></div><div id="xpt"></div>
+  <div id="stk"></div><div id="bnd"></div>
+  <button class="bb" id="bAuto"></button><button class="bb" id="bReset"></button><button class="bb" id="bLang">EN</button><button class="bb" id="bQR">QR</button>
+</footer>
+
+<div id="qr" hidden><div class="card"><div class="qt" data-i="qrT"></div><div id="qrbox"></div><div class="qu" id="qru"></div>
+  <button class="bb" id="qrClose">✕</button></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+
+/* ───────── texts ───────── */
+const T={
+ sk:{sim:'Pohľad robotníka · simulácia Meta Quest 3S',facades:'FASÁDA',params:'MATRICA · LATA',
+  note:'Predvolené hodnoty sú orientačné — nastav sklon, amplitúdu a periódu podľa svojej laty.',
+  hint:'Chyť latu myšou a ťahaj po šípke. Medzerník = Auto.',
+  angle:'Sklon drážok',A:'Amplitúda A (hĺbka)',L:'Perióda L (rozstup)',lath:'Dĺžka laty',
+  s1:'KROK 1 · PRILOŽ A ZAPICHNI',m1:'Prilož latu na začiatok pásu a zatlač ju do omietky',
+  sub1:A=>`Hĺbka drážky A = ${A} cm`,align:' · spodný zub vlož do poslednej drážky',
+  s2:'KROK 2 · ŤAHAJ',m2:a=>`Ťahaj latu v sklone ${a}° až na koniec pásu`,dev:'Odchýlka od dráhy',
+  s3:'OTLÁČAJ',m3:'Prilož latu do obrysu a otlač',
+  sub3:(i,n)=>`Odtlačok ${i}/${n} · krajný rad laty vlož do posledných jamiek`,
+  alignDim:'kraj → do jamiek',qrT:'Naskenuj a vyskúšaj si to na mobile',
+  dragLbl:'ŤAHAJ',press:'ZAPICHNI',stampLbl:'OTLAČ',alignLbl:'zub → drážka',surface:'POVRCH ROZPOZNANÝ · 2,4 × 1,6 m',
+  acc:'presnosť',ang:'uhol',streak:'SÉRIA',band:'PÁS',auto:'⏸ Auto',man:'▶ Auto',reset:'↺ Znova',
+  done:k=>`FASÁDA ${k} HOTOVÁ`,doneS:(b,a,x)=>`${b} pásov · priemerná presnosť ${a} % · +${x} XP`,
+  again:'Znova',next:'Ďalšia fasáda →',levelUp:'NOVÝ LEVEL',lath_:'LATA',depth:'hĺbka',pitch:'rozstup',exag:'výška prevýšená'},
+ en:{sim:'Worker view · Meta Quest 3S simulation',facades:'FACADE',params:'MATRIX · LATH',
+  note:'Default values are indicative — set angle, amplitude and period to match your lath.',
+  hint:'Grab the lath with the mouse and drag along the arrow. Space = Auto.',
+  angle:'Groove angle',A:'Amplitude A (depth)',L:'Period L (pitch)',lath:'Lath length',
+  s1:'STEP 1 · PLACE & PRESS IN',m1:'Place the lath at the start of the band and press it into the plaster',
+  sub1:A=>`Groove depth A = ${A} cm`,align:' · put the bottom tooth into the last groove',
+  s2:'STEP 2 · DRAG',m2:a=>`Drag the lath at ${a}° to the end of the band`,dev:'Deviation from path',
+  s3:'STAMP',m3:'Place the lath inside the outline and press',
+  sub3:(i,n)=>`Stamp ${i}/${n} · put the lath's edge row into the last dimples`,
+  alignDim:'edge → into dimples',qrT:'Scan and try it on your phone',
+  dragLbl:'DRAG',press:'PRESS IN',stampLbl:'STAMP',alignLbl:'tooth → groove',surface:'SURFACE DETECTED · 2.4 × 1.6 m',
+  acc:'accuracy',ang:'angle',streak:'STREAK',band:'BAND',auto:'⏸ Auto',man:'▶ Auto',reset:'↺ Reset',
+  done:k=>`FACADE ${k} COMPLETE`,doneS:(b,a,x)=>`${b} bands · average accuracy ${a} % · +${x} XP`,
+  again:'Again',next:'Next facade →',levelUp:'LEVEL UP',lath_:'LATH',depth:'depth',pitch:'pitch',exag:'height exaggerated'}
+};
+let lang='sk'; const t=k=>T[lang][k];
+const LV=[{xp:0,sk:'NOVÁČIK',en:'ROOKIE'},{xp:200,sk:'UČEŇ',en:'APPRENTICE'},{xp:500,sk:'REMESELNÍK',en:'CRAFTSMAN'},{xp:1000,sk:'MAJSTER',en:'MASTER'}];
+const lvlOf=x=>{let i=0;LV.forEach((l,k)=>{if(x>=l.xp)i=k});return i};
+
+/* ───────── facades (lath presets) ───────── */
+const PRESETS={
+ NNE:{type:'asym',  angle:40, A:4,   L:22, lath:100, color:'#00E5FF', mode:'SURF',   xp:60},
+ N:  {type:'fib',   angle:15, A:2.5, L:20, lath:100, color:'#B388FF', mode:'PLANET', xp:50},
+ ENE:{type:'sine',  angle:30, A:3,   L:25, lath:100, color:'#00E676', mode:'WAVE',   xp:45},
+ ESE:{type:'sine',  angle:150,A:3,   L:25, lath:100, color:'#00E676', mode:'WAVE',   xp:45},
+ SSE:{type:'dimple',angle:0,  A:2.5, L:7,  lath:60,  color:'#FFC400', mode:'STAMP',  xp:40},
+ SSW:{type:'dimple',angle:0,  A:2.5, L:7,  lath:60,  color:'#FFC400', mode:'STAMP',  xp:40},
+};
+const KEYS=Object.keys(PRESETS);
+const WALL={w:240,h:160};             // wall section in cm
+const LX=-0.45,LY=0.55,LZ=0.70;        // light from top-left
+let key='NNE',P,d,n,bands=[],stripes=[],peaks=[],segs=[];
+const STW=0.35;
+
+/* ───────── canvas setup ───────── */
+const cv=$('cv'),ctx=cv.getContext('2d');
+const tex=document.createElement('canvas');
+const work=document.createElement('canvas'),wctx=work.getContext('2d');
+let vw,vh,dpr,sc,ox,oy,panelOpen=innerWidth>900;
+let S=null,G={xp:0,streak:0},auto=true,dragging=false,grab=null,clock=0,floaters=[],doneTimer=null;
+
+const hexA=(h,a)=>`rgba(${parseInt(h.slice(1,3),16)},${parseInt(h.slice(3,5),16)},${parseInt(h.slice(5,7),16)},${a})`;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const dispAng=()=>P.angle<=90?P.angle:180-P.angle;
+
+function uv2s(u,v){const x=u*d.x+v*n.x,y=u*d.y+v*n.y;return{x:ox+x*sc,y:oy-y*sc}}
+function s2uv(sx,sy){const x=(sx-ox)/sc,y=(oy-sy)/sc;return{u:x*d.x+y*d.y,v:x*n.x+y*n.y}}
+function clipWall(c){c.beginPath();c.rect(ox,oy-WALL.h*sc,WALL.w*sc,WALL.h*sc);c.clip()}
+function clampWall(p){return{x:clamp(p.x,ox+30,ox+WALL.w*sc-30),y:clamp(p.y,oy-WALL.h*sc+24,oy-24)}}
+
+/* noise for plaster */
+function h2(x,y){let v=(x*374761393+y*1073741789)|0;v^=v>>13;v=Math.imul(v,1540483477);v^=v>>15;return(v&0xffff)/0xffff}
+function n2(x,y){const ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy,ux=fx*fx*(3-2*fx),uy=fy*fy*(3-2*fy);
+ return h2(ix,iy)*(1-ux)*(1-uy)+h2(ix+1,iy)*ux*(1-uy)+h2(ix,iy+1)*(1-ux)*uy+h2(ix+1,iy+1)*ux*uy}
+
+function layout(){
+ vw=innerWidth;vh=innerHeight;dpr=Math.min(2,devicePixelRatio||1);
+ cv.width=Math.round(vw*dpr);cv.height=Math.round(vh*dpr);
+ const wide=vw>900, top=wide?118:150, bot=72, left=wide?28:16, right=(wide&&panelOpen)?310:16;
+ sc=Math.min((vw-left-right)/WALL.w,(vh-top-bot)/WALL.h);
+ const ww=WALL.w*sc,wh=WALL.h*sc;
+ ox=left+((vw-left-right)-ww)/2; oy=top+((vh-top-bot)-wh)/2+wh;
+ buildTex(); if(S) rebuildWork();
+}
+function buildTex(){
+ const w=Math.max(1,Math.ceil(WALL.w*sc)),h=Math.max(1,Math.ceil(WALL.h*sc));
+ tex.width=w;tex.height=h;const c=tex.getContext('2d');const img=c.createImageData(w,h),D=img.data;
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+  const cx=x/sc,cy=y/sc;
+  const v=.5*n2(cx*.12,cy*.12)+.3*n2(cx*.45+9,cy*.45+3)+.2*n2(cx*1.6+5,cy*1.6+7);
+  const f=.86+.18*v+(h2(x,y)-.5)*.05, i=(y*w+x)*4;
+  D[i]=200*f;D[i+1]=191*f;D[i+2]=174*f;D[i+3]=255;
+ }
+ c.putImageData(img,0,0);
+}
+
+/* ───────── lath profile ───────── */
+function buildFib(){segs=[];let s=P.L*.2,x=0;while(x<P.lath-.5){segs.push([x,Math.min(s,P.lath-x)]);x+=s;s*=1.618}}
+function prof(tt){
+ if(tt<0||tt>P.lath)return 0;const A=P.A,L=P.L;
+ if(P.type==='sine')return A*(.5-.5*Math.cos(2*Math.PI*tt/L));
+ if(P.type==='asym'){const f=((tt/L)%1+1)%1;return A*(f<.7?(1-Math.cos(Math.PI*f/.7))/2:(1+Math.cos(Math.PI*(f-.7)/.3))/2)}
+ if(P.type==='fib'){for(const[x0,w]of segs)if(tt>=x0&&tt<x0+w)return A*(.5-.5*Math.cos(2*Math.PI*(tt-x0)/w));return 0}
+ return 0;
+}
+function buildStripes(){
+ stripes=[];if(P.type==='dimple')return;
+ for(let tt=STW/2;tt<P.lath;tt+=STW){
+  const dep=prof(tt),dp=(prof(tt+.05)-prof(tt-.05))/.1*1.6;
+  const I=(dp*(n.x*LX+n.y*LY)+LZ)/Math.sqrt(1+dp*dp);
+  const f=clamp(I/LZ*(1-.25*dep/Math.max(P.A,.1)),.3,1.4);
+  let col=null;
+  if(f<.98)col=`rgba(45,35,25,${((1-f)*.95).toFixed(3)})`;
+  else if(f>1.02)col=`rgba(255,252,240,${((f-1)*.9).toFixed(3)})`;
+  stripes.push({t:tt,col});
+ }
+}
+function buildPeaks(){
+ peaks=[];const L=P.L;
+ if(P.type==='sine')for(let x=L/2;x<P.lath;x+=L)peaks.push(x);
+ else if(P.type==='asym')for(let x=.7*L;x<P.lath;x+=L)peaks.push(x);
+ else if(P.type==='fib')segs.forEach(([x0,w])=>peaks.push(x0+w/2));
+ else for(let x=L/2;x<=P.lath-L/2+1e-6;x+=L)peaks.push(x);
+}
+
+/* ───────── bands (one lath pass each) ───────── */
+function lineInt(v){
+ const px=v*n.x,py=v*n.y;let lo=-1e9,hi=1e9;
+ for(const[p,dd,mx]of[[px,d.x,WALL.w],[py,d.y,WALL.h]]){
+  if(Math.abs(dd)<1e-9){if(p<-1e-6||p>mx+1e-6)return null}
+  else{const a=-p/dd,b=(mx-p)/dd;lo=Math.max(lo,Math.min(a,b));hi=Math.min(hi,Math.max(a,b))}
+ }
+ return lo<hi?[lo,hi]:null;
+}
+function buildBands(){
+ const vs=[[0,0],[WALL.w,0],[0,WALL.h],[WALL.w,WALL.h]].map(c=>c[0]*n.x+c[1]*n.y);
+ const vmin=Math.min(...vs),vmax=Math.max(...vs);bands=[];
+ const dim=P.type==='dimple',hgt=dim?NDIM()*P.L+P.L/2:P.lath,stride=dim?(NDIM()-1)*P.L:P.lath;
+ const nb=Math.max(1,Math.ceil((vmax-vmin-hgt)/stride-1e-6)+1);
+ for(let k=0;k<nb;k++){
+  const v0=vmin+k*stride,v1=v0+hgt;let u0=1e9,u1=-1e9;
+  for(let i=0;i<=12;i++){const r=lineInt(v0+(v1-v0)*i/12);if(r){u0=Math.min(u0,r[0]);u1=Math.max(u1,r[1])}}
+  if(u1-u0>4)bands.push({v0,v1,u0,u1});
+ }
+}
+/* golf lath = hexagonal block: COLS columns × NDIM rows, every 2nd column shifted by L/2.
+   Next stamp advances COLS-1 columns → its first column goes into the last dimples of the previous stamp.
+   Next band overlaps one row. */
+const NDIM=()=>Math.max(2,Math.floor(P.lath/P.L));
+const COLS=3;
+const colU=(b,g)=>b.u0+P.L*.866*(g+.5);
+const colOff=g=>(g%2)*P.L/2;
+function stampInfo(b){const pitch=P.L*.866,tc=Math.max(COLS,Math.floor((b.u1-b.u0)/pitch));return{pitch,J:Math.ceil((tc-1)/(COLS-1))}}
+function stampGhost(b,j){const g0=j*(COLS-1);return{g0,uc:colU(b,g0+1),vc:b.v0+NDIM()*P.L/2+P.L/4}}
+
+/* ───────── drawing the real work into plaster ───────── */
+function drawBandGrooves(c,b,uA,uB){
+ if(uB<=uA)return;c.lineWidth=STW*sc+.7;c.lineCap='butt';
+ for(const st of stripes){
+  const v=b.v0+st.t;if(v>b.v1)break;if(!st.col)continue;
+  const p1=uv2s(uA,v),p2=uv2s(uB,v);
+  c.strokeStyle=st.col;c.beginPath();c.moveTo(p1.x,p1.y);c.lineTo(p2.x,p2.y);c.stroke();
+ }
+}
+function drawStamp(c,bk,st){
+ const b=bands[bk],g0=st.j*(COLS-1),r=P.L*.42*sc,k=clamp(P.A/2.5,.5,1.6);
+ for(let ci=0;ci<COLS;ci++)for(let i=0;i<NDIM();i++){
+  if((ci===0&&st.j>0)||(i===0&&bk>0))continue;     // overlap: these dimples already exist
+  const g=g0+ci,p=uv2s(colU(b,g)+st.ou,b.v0+colOff(g)+(i+.5)*P.L+st.ov);
+  const gr=c.createLinearGradient(p.x-r*.7,p.y-r*.7,p.x+r*.7,p.y+r*.7);
+  gr.addColorStop(0,`rgba(45,35,25,${.55*k})`);gr.addColorStop(.55,`rgba(110,100,85,${.12*k})`);gr.addColorStop(1,`rgba(255,252,240,${.45*k})`);
+  c.beginPath();c.arc(p.x,p.y,r,0,Math.PI*2);c.fillStyle=gr;c.fill();
+  c.lineWidth=1;c.strokeStyle='rgba(60,50,38,.35)';c.stroke();
+ }
+}
+function rebuildWork(){
+ work.width=Math.round(vw*dpr);work.height=Math.round(vh*dpr);
+ wctx.setTransform(dpr,0,0,dpr,0,0);wctx.clearRect(0,0,vw,vh);
+ wctx.drawImage(tex,ox,oy-WALL.h*sc,WALL.w*sc,WALL.h*sc);
+ wctx.save();clipWall(wctx);
+ S.done.forEach(r=>{const b=bands[r.k];if(P.type==='dimple')r.stamps.forEach(st=>drawStamp(wctx,r.k,st));else drawBandGrooves(wctx,b,b.u0,b.u1)});
+ if(P.type==='dimple'&&bands[S.k])S.stamps.forEach(st=>drawStamp(wctx,S.k,st));
+ wctx.restore();
+}
+
+/* ───────── AR overlays ───────── */
+function hstroke(c,w,col){c.lineWidth=w+3;c.strokeStyle='rgba(0,0,0,.5)';c.stroke();c.lineWidth=w;c.strokeStyle=col;c.stroke()}
+function poly(c,pts){c.beginPath();pts.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));c.closePath()}
+function bandPoly(c,b){poly(c,[uv2s(b.u0,b.v0),uv2s(b.u1,b.v0),uv2s(b.u1,b.v1),uv2s(b.u0,b.v1)])}
+function devCol(x){x=Math.abs(x);return x<1.2?'#00E676':x<2.5?'#FFC400':'#FF5252'}
+function pill(c,x,y,txt,col,rot=0){
+ c.save();c.translate(x,y);c.rotate(rot);c.font='700 13px Inter,system-ui,sans-serif';
+ const w=c.measureText(txt).width+16;c.fillStyle='rgba(6,10,12,.85)';c.strokeStyle=col;c.lineWidth=1.5;
+ c.beginPath();c.roundRect(-w/2,-12,w,24,5);c.fill();c.stroke();
+ c.fillStyle=col;c.textAlign='center';c.textBaseline='middle';c.fillText(txt,0,1);c.restore();
+}
+function drawTrace(tr,vc,alpha,col){
+ if(tr.length<2)return;ctx.save();ctx.globalAlpha=alpha;
+ ctx.beginPath();tr.forEach((p,i)=>{const s=uv2s(p.u,vc+p.dev);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y)});
+ hstroke(ctx,2.5,col);ctx.restore();
+}
+
+function drawClipped(){
+ const b=bands[S.k],col=P.color;
+ // upcoming bands
+ ctx.save();ctx.setLineDash([6,6]);
+ for(let k=S.k+1;k<bands.length;k++){bandPoly(ctx,bands[k]);ctx.lineWidth=1.2;ctx.strokeStyle='rgba(255,255,255,.55)';ctx.stroke()}
+ ctx.restore();
+ // traces of finished bands
+ if(P.type!=='dimple')S.done.forEach(r=>{const bb=bands[r.k];drawTrace(r.trace,(bb.v0+bb.v1)/2,.45,r.acc>.85?'#00E676':r.acc>.6?'#FFC400':'#FF5252')});
+ if(!b||S.phase==='complete')return;
+ // current band
+ bandPoly(ctx,b);ctx.fillStyle=hexA(col,.08);ctx.fill();
+ ctx.save();ctx.setLineDash([10,6]);bandPoly(ctx,b);hstroke(ctx,2,hexA(col,.9));ctx.restore();
+
+ if(P.type==='dimple'){
+  const{J}=stampInfo(b),N=NDIM(),hw=P.L*.5;
+  for(let q=1;q>=0;q--){
+   const j=S.j+q;if(j>=J)continue;const g0=j*(COLS-1);
+   const uA=colU(b,g0)-hw,uB=colU(b,g0+COLS-1)+hw,vA=b.v0,vB=b.v0+N*P.L+P.L/2;
+   ctx.save();ctx.globalAlpha=q?.3:1;
+   poly(ctx,[uv2s(uA,vA),uv2s(uB,vA),uv2s(uB,vB),uv2s(uA,vB)]);
+   ctx.fillStyle=hexA(col,q?.04:.14+.1*Math.sin(clock*5));ctx.fill();hstroke(ctx,q?1.5:2.5,col);
+   for(let ci=0;ci<COLS;ci++){const g=g0+ci;for(let i=0;i<N;i++){
+    const p=uv2s(colU(b,g),b.v0+colOff(g)+(i+.5)*P.L);
+    const reg=!q&&((ci===0&&j>0)||(i===0&&S.k>0));   // registration dimples = go into existing ones
+    ctx.beginPath();ctx.arc(p.x,p.y,P.L*.42*sc,0,Math.PI*2);
+    if(reg){ctx.fillStyle='rgba(255,255,255,.55)';ctx.fill()}
+    ctx.lineWidth=reg?2:1.2;ctx.strokeStyle=reg?'#fff':col;ctx.stroke()}}
+   ctx.restore();
+  }
+  return;
+ }
+ // arrow along drag direction
+ const vc=(b.v0+b.v1)/2,r=lineInt(vc)||[b.u0,b.u1];
+ const a=uv2s(r[0]+4,vc),z=uv2s(r[1]-4,vc),an=Math.atan2(z.y-a.y,z.x-a.x);
+ ctx.save();ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(z.x,z.y);ctx.setLineDash([16,12]);ctx.lineDashOffset=-clock*40;hstroke(ctx,3,col);ctx.setLineDash([]);
+ ctx.beginPath();ctx.moveTo(z.x,z.y);ctx.lineTo(z.x-20*Math.cos(an-.4),z.y-20*Math.sin(an-.4));ctx.lineTo(z.x-20*Math.cos(an+.4),z.y-20*Math.sin(an+.4));ctx.closePath();
+ ctx.fillStyle=col;ctx.fill();ctx.restore();
+ // live trace
+ if(S.phase==='drag')drawTrace(S.trace,vc,1,devCol(S.dev));
+ // the lath itself
+ const place=S.phase==='place',gu=place?b.u0+3:S.u,gd=place?0:S.dev;
+ const lc=place?col:devCol(S.dev);
+ poly(ctx,[uv2s(gu-3,b.v0+gd),uv2s(gu,b.v0+gd),uv2s(gu,b.v1+gd),uv2s(gu-3,b.v1+gd)]);
+ ctx.fillStyle=hexA(lc,place?.25+.2*Math.sin(clock*5):.4);ctx.fill();hstroke(ctx,2.5,lc);
+ for(const pk of peaks){const p=uv2s(gu,b.v0+pk+gd);ctx.beginPath();ctx.arc(p.x,p.y,3.5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill()}
+ if(place){
+  const c0=clampWall(uv2s(gu,vc)),rr=26+10*Math.sin(clock*5);
+  ctx.beginPath();ctx.arc(c0.x,c0.y,auto?Math.max(6,40-S.timer*30):rr,0,Math.PI*2);hstroke(ctx,2,col);
+ }
+}
+
+function drawLabels(){
+ const b=bands[S.k],col=P.color;
+ // detected plane corners + label
+ const L=ox,R=ox+WALL.w*sc,Tp=oy-WALL.h*sc,B=oy,k=22;
+ ctx.save();ctx.lineWidth=3;ctx.strokeStyle=col;
+ [[L,Tp,1,1],[R,Tp,-1,1],[L,B,1,-1],[R,B,-1,-1]].forEach(([x,y,sx,sy])=>{ctx.beginPath();ctx.moveTo(x,y+sy*k);ctx.lineTo(x,y);ctx.lineTo(x+sx*k,y);ctx.stroke()});
+ ctx.font='11px "Share Tech Mono",monospace';ctx.fillStyle=col;ctx.textBaseline='bottom';ctx.fillText(t('surface'),L+2,Tp-6);ctx.restore();
+ if(!b||S.phase==='complete')return;
+
+ if(P.type==='dimple'){
+  const g=stampGhost(b,S.j),p=clampWall(uv2s(colU(b,g.g0+COLS-1)+P.L,g.vc));
+  pill(ctx,p.x+44,p.y,t('stampLbl')+' ⤓',col);
+  if(S.j>0){const q=clampWall(uv2s(colU(b,g.g0),g.vc));pill(ctx,q.x-74,q.y,t('alignDim'),'#fff')}
+  else if(S.k>0){const q=clampWall(uv2s(colU(b,g.g0+1),b.v0+P.L*.5));pill(ctx,q.x,q.y+28,t('alignDim'),'#fff')}
+  return;
+ }
+ const vc=(b.v0+b.v1)/2,r=lineInt(vc)||[b.u0,b.u1];
+ const a=uv2s(r[0]+4,vc),z=uv2s(r[1]-4,vc);let an=Math.atan2(z.y-a.y,z.x-a.x);
+ let ra=an;if(ra>Math.PI/2)ra-=Math.PI;if(ra<-Math.PI/2)ra+=Math.PI;
+ const mid=clampWall({x:(a.x+z.x)/2-Math.sin(an)*28,y:(a.y+z.y)/2+Math.cos(an)*-28});
+ pill(ctx,mid.x,mid.y,`${t('dragLbl')} → ${dispAng()}°`,col,ra);
+ // protractor at start
+ const s0=clampWall(a),ref=d.x>=0?0:Math.PI,R0=48;
+ ctx.save();ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(s0.x,s0.y);ctx.lineTo(s0.x+(d.x>=0?1:-1)*70,s0.y);hstroke(ctx,1.5,'#fff');ctx.setLineDash([]);
+ if(dispAng()>0.5){ctx.beginPath();ctx.arc(s0.x,s0.y,R0,ref,an,d.x>=0);hstroke(ctx,2,col);
+  const bis=d.x>=0?an/2:(Math.PI+an)/2+(an<0?Math.PI:0);
+  ctx.font='700 14px Inter,sans-serif';ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.6)';const tx=s0.x+Math.cos(bis)*(R0+18),ty=s0.y+Math.sin(bis)*(R0+18);
+  ctx.strokeText(dispAng()+'°',tx,ty);ctx.fillText(dispAng()+'°',tx,ty);}
+ ctx.restore();
+ if(S.phase==='place'){
+  const c0=clampWall(uv2s(b.u0+3,vc));
+  pill(ctx,c0.x-(d.x>=0?1:-1)*Math.abs(Math.cos(an))*80,c0.y+Math.sin(an)*0-42,t('press')+' ⤓',col);
+  if(S.k>0){const p=clampWall(uv2s(b.u0+3,b.v0+peaks[0]));pill(ctx,p.x+(d.x>=0?70:-70),p.y,t('alignLbl'),'#fff')}
+ }
+}
+function drawFloaters(){
+ ctx.save();ctx.font='700 14px Inter,sans-serif';ctx.textAlign='center';
+ floaters.forEach(f=>{ctx.globalAlpha=1-f.t/1.2;ctx.fillStyle=f.col;ctx.fillText(f.txt,f.x,f.y-f.t*40)});ctx.restore();
+}
+
+/* ───────── game logic ───────── */
+function newWob(){return{amp:.3+Math.random()*1.5,ph:Math.random()*6,drift:(Math.random()-.5)*2}}
+function resetFacade(){
+ clearTimeout(doneTimer);
+ S={k:0,phase:bands.length?(P.type==='dimple'?'stamp':'place'):'complete',u:bands[0]?bands[0].u0:0,dev:0,trace:[],timer:0,
+    j:0,stamps:[],sAcc:[],done:[],accs:[],gained:0,wob:newWob()};
+ dragging=false;$('done').hidden=true;rebuildWork();updInstr();updHud();
+}
+function startDrag(){const b=bands[S.k];S.phase='drag';S.u=b.u0;S.dev=0;S.timer=0;S.trace=[{u:b.u0,dev:0}];updInstr()}
+function pushTrace(){const l=S.trace[S.trace.length-1];if(!l||S.u-l.u>.8)S.trace.push({u:S.u,dev:S.dev})}
+function finishBand(){
+ const b=bands[S.k];S.trace.push({u:b.u1,dev:S.dev});
+ const dv=S.trace.map(p=>p.dev),rms=Math.sqrt(dv.reduce((a,x)=>a+x*x,0)/dv.length);
+ const angErr=Math.atan2(dv[dv.length-1]-dv[0],b.u1-b.u0)*180/Math.PI,acc=clamp(1-rms/3,0,1);
+ wctx.save();clipWall(wctx);drawBandGrooves(wctx,b,b.u0,b.u1);wctx.restore();
+ S.done.push({k:S.k,trace:S.trace.slice(),acc,stamps:[]});
+ award(acc,`${t('ang')} ${angErr>=0?'+':''}${angErr.toFixed(1)}°`);nextBand();
+}
+function press(cl){
+ const b=bands[S.k];if(!b)return;const g=stampGhost(b,S.j),{J}=stampInfo(b);let ou=0,ov=0,acc;
+ if(!cl){ou=(Math.random()-.5)*P.L*.15;acc=1-Math.abs(ou)/(P.L*.6)}
+ else{const du=cl.u-g.uc,dv=cl.v-g.vc;
+  if(Math.abs(du)>P.L*3||Math.abs(dv)>NDIM()*P.L/2+P.L)acc=.85;
+  else{ou=clamp(du,-P.L*.8,P.L*.8);acc=clamp(1-Math.abs(du)/(P.L*.6),0,1)}}
+ const st={j:S.j,ou,ov};S.stamps.push(st);S.sAcc.push(acc);
+ wctx.save();clipWall(wctx);drawStamp(wctx,S.k,st);wctx.restore();
+ const gain=Math.round(4*(.4+.6*acc));G.xp+=gain;S.gained+=gain;
+ const p=uv2s(g.uc,b.v0+NDIM()*P.L+P.L);floaters.push({x:p.x,y:p.y,txt:'+'+gain,col:devCol((1-acc)*3),t:0});
+ S.j++;
+ if(S.j>=J){const avg=S.sAcc.reduce((a,x)=>a+x,0)/S.sAcc.length;
+  S.done.push({k:S.k,stamps:S.stamps.slice(),acc:avg,trace:[]});S.stamps=[];S.sAcc=[];S.j=0;award(avg,'');nextBand()}
+ else{updInstr();updHud()}
+}
+function award(acc,extra){
+ const prev=lvlOf(G.xp),gain=Math.round(P.xp*(.4+.6*acc));let bonus=0;
+ if(acc>=.85){G.streak++;bonus=Math.min(G.streak,5)*5}else G.streak=0;
+ G.xp+=gain+bonus;S.gained+=gain+bonus;S.accs.push(acc);
+ toast(`+${gain+bonus} XP`,[`${t('acc')} ${Math.round(acc*100)} %`,extra,bonus?`${t('streak')} +${bonus}`:''].filter(Boolean).join(' · '),acc);
+ if(lvlOf(G.xp)>prev)setTimeout(()=>toast(t('levelUp'),LV[lvlOf(G.xp)][lang],1),1500);
+ updHud();
+}
+function nextBand(){
+ S.k++;S.trace=[];S.dev=0;S.timer=0;S.wob=newWob();
+ if(S.k>=bands.length){S.phase='complete';setTimeout(showDone,1300)}
+ else{S.phase=P.type==='dimple'?'stamp':'place';S.u=bands[S.k].u0}
+ updInstr();updHud();
+}
+function showDone(){
+ const a=S.accs.length?Math.round(S.accs.reduce((x,y)=>x+y,0)/S.accs.length*100):0;
+ document.querySelector('.dt').textContent=T[lang].done(key);
+ document.querySelector('.ds').textContent=T[lang].doneS(S.done.length,a,S.gained);
+ $('done').hidden=false;
+ if(auto)doneTimer=setTimeout(()=>loadFacade(KEYS[(KEYS.indexOf(key)+1)%KEYS.length]),4500);
+}
+
+function update(dt){
+ clock+=dt;floaters.forEach(f=>f.t+=dt);floaters=floaters.filter(f=>f.t<1.2);
+ if(!auto||!S||S.phase==='complete')return;const b=bands[S.k];if(!b)return;
+ S.timer+=dt;
+ if(P.type==='dimple'){if(S.timer>.3){S.timer=0;press(null)}return}
+ if(S.phase==='place'){if(S.timer>1.2)startDrag()}
+ else if(S.phase==='drag'){
+  const span=b.u1-b.u0;S.u=Math.min(b.u1,S.u+span/3.4*dt);const pr=(S.u-b.u0)/span;
+  S.dev=S.wob.amp*Math.sin((S.u-b.u0)*.09+S.wob.ph)*Math.min(1,pr*4)+S.wob.drift*pr;
+  pushTrace();liveDev();if(S.u>=b.u1-1e-6)finishBand();
+ }
+}
+
+/* ───────── HUD ───────── */
+function updInstr(){
+ const card=$('instr');card.style.borderColor=P.color;$('istep').style.color=P.color;
+ if(S.phase==='complete'){$('istep').textContent='✓';$('imain').textContent=T[lang].done(key);$('isub').textContent='';return}
+ if(P.type==='dimple'){const b=bands[S.k],{pitch,J}=stampInfo(b);
+  $('istep').textContent=`${t('s3')} · ${t('band')} ${S.k+1}/${bands.length}`;$('imain').textContent=t('m3');
+  $('isub').textContent=T[lang].sub3(S.j+1,J);return}
+ if(S.phase==='place'){$('istep').textContent=`${t('s1')} · ${t('band')} ${S.k+1}/${bands.length}`;$('imain').textContent=t('m1');
+  $('isub').textContent=T[lang].sub1(P.A)+(S.k>0?t('align'):'');}
+ else{$('istep').textContent=`${t('s2')} · ${t('band')} ${S.k+1}/${bands.length}`;$('imain').textContent=T[lang].m2(dispAng());liveDev()}
+}
+function liveDev(){
+ const x=Math.abs(S.dev),cl=x<1.2?'ok':x<2.5?'warn':'bad';
+ $('isub').innerHTML=`${t('dev')}: <b class="${cl}">${S.dev>=0?'+':'−'}${x.toFixed(1)} cm</b>`;
+}
+function updHud(){
+ const li=lvlOf(G.xp),cur=LV[li],nx=LV[li+1];
+ $('lvl').textContent=`LVL ${li+1} · ${cur[lang]}`;
+ $('xpf').style.width=(nx?(G.xp-cur.xp)/(nx.xp-cur.xp)*100:100)+'%';
+ $('xpt').textContent=nx?`${G.xp} / ${nx.xp} XP`:`${G.xp} XP`;
+ $('stk').textContent=`${t('streak')} ×${G.streak}`;$('stk').classList.toggle('hot',G.streak>=2);
+ $('bnd').textContent=S?`${t('band')} ${Math.min(S.k+1,bands.length)}/${bands.length}`:'';
+ $('fac').textContent=`${key} · ${P.mode}`;
+}
+let toastT=null;
+function toast(big,small,acc){
+ const el=$('toast');el.querySelector('.tb').textContent=big;el.querySelector('.ts').textContent=small;
+ el.style.borderColor=acc>.85?'var(--ok)':acc>.6?'var(--warn)':'var(--bad)';
+ el.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('show'),1500);
+}
+function setAuto(v){auto=v;$('bAuto').textContent=v?t('auto'):t('man');$('bAuto').classList.toggle('on',v)}
+
+/* ───────── panel: facades, sliders, lath profile ───────── */
+const SL=[{k:'angle',min:0,max:180,step:1,u:'°'},{k:'A',min:.5,max:6,step:.5,u:' cm'},{k:'L',min:4,max:40,step:1,u:' cm'},{k:'lath',min:40,max:150,step:10,u:' cm'}];
+function buildPanel(){
+ $('fgrid').innerHTML='';
+ KEYS.forEach((k,i)=>{const b=document.createElement('button');b.className='fb'+(k===key?' on':'');b.style.setProperty('--c',PRESETS[k].color);
+  b.innerHTML=`<b>${k}</b><span>${PRESETS[k].mode}</span>`;b.onclick=()=>loadFacade(k);$('fgrid').appendChild(b)});
+ $('sliders').innerHTML='';
+ SL.forEach(s=>{const w=document.createElement('div');w.className='sl';
+  w.innerHTML=`<label><span>${t(s.k)}</span><output id="o_${s.k}"></output></label><input type="range" id="r_${s.k}" min="${s.min}" max="${s.max}" step="${s.step}">`;
+  $('sliders').appendChild(w);
+  const r=w.querySelector('input');r.value=P[s.k];$('o_'+s.k).textContent=P[s.k]+s.u;
+  r.oninput=()=>{P[s.k]=+r.value;$('o_'+s.k).textContent=P[s.k]+s.u;applyParams()}});
+ document.querySelectorAll('[data-i]').forEach(e=>e.textContent=t(e.dataset.i));
+}
+function drawInset(){
+ const c=$('inset'),r=c.getBoundingClientRect(),W=r.width||256,H=r.height||136,q=Math.min(2,devicePixelRatio||1);
+ c.width=W*q;c.height=H*q;const x=c.getContext('2d');x.setTransform(q,0,0,q,0,0);x.clearRect(0,0,W,H);
+ const col=P.color,x0=12,x1=W-12,kx=(x1-x0)/P.lath,base=44,ky=Math.min(7,40/Math.max(P.A,.5));
+ x.font='11px "Share Tech Mono",monospace';x.fillStyle='rgba(238,244,245,.6)';
+ x.fillText(`${t('lath_')} ${P.lath} cm`,x0,16);
+ if(P.type==='dimple'){   // front view of the hexagonal stamp block
+  const N=NDIM(),pitch=P.L*.866,bw=(COLS-1)*pitch+P.L,bh=N*P.L+P.L/2,s=Math.min((H-36)/bh,(W-130)/bw),bx=x0,by=26;
+  x.fillStyle=hexA(col,.15);x.strokeStyle=col;x.lineWidth=1.5;x.fillRect(bx,by,bw*s,bh*s);x.strokeRect(bx,by,bw*s,bh*s);
+  for(let c2=0;c2<COLS;c2++)for(let i=0;i<N;i++){const cx=bx+(P.L/2+c2*pitch)*s,cy=by+((c2%2)*P.L/2+(i+.5)*P.L)*s;
+   x.beginPath();x.arc(cx,cy,P.L*.42*s,0,Math.PI*2);x.fillStyle=c2===0?'rgba(255,255,255,.8)':hexA(col,.65);x.fill()}
+  const tx=bx+bw*s+12;x.fillStyle='#fff';
+  x.fillText(`${COLS} × ${N}`,tx,by+12);x.fillText(`⌀ ${(P.L*.84).toFixed(1)} cm`,tx,by+30);x.fillText(`L ${P.L} cm`,tx,by+48);
+  x.fillStyle='rgba(255,255,255,.7)';x.fillText(t('alignDim'),tx,by+72);return;
+ }
+ x.textAlign='right';x.fillText(t('exag'),x1,16);x.textAlign='left';
+ // lath body
+ x.fillStyle=hexA(col,.18);x.strokeStyle=col;x.lineWidth=1.5;
+ x.beginPath();x.moveTo(x0,24);x.lineTo(x1,24);
+ if(P.type==='dimple'){x.lineTo(x1,base);for(let i=NDIM()-1;i>=0;i--){const cx=x0+(i+.5)*P.L*kx,rr=P.L*.42*kx;x.lineTo(cx+rr,base);x.ellipse(cx,base,rr,Math.min(P.A*ky,rr*1.2),0,0,Math.PI,false);x.lineTo(cx-rr,base)}x.lineTo(x0,base)}
+ else{for(let tt=P.lath;tt>=0;tt-=.25)x.lineTo(x0+tt*kx,base+prof(tt)*ky)}
+ x.closePath();x.fill();x.stroke();
+ // dimensions
+ x.strokeStyle='#fff';x.fillStyle='#fff';x.lineWidth=1;
+ const pk0=peaks[0]??P.L/2,pk1=peaks[1]??pk0+P.L,ax=x0+pk0*kx,ay=base+P.A*ky;
+ x.beginPath();x.moveTo(ax+12,base);x.lineTo(ax+12,ay);x.stroke();
+ x.fillText(`A ${P.A} cm`,ax+16,(base+ay)/2+4);
+ const ly=Math.max(ay,base+P.A*ky)+16,bx=x0+pk1*kx;
+ x.beginPath();x.moveTo(ax,ly);x.lineTo(bx,ly);x.moveTo(ax,ly-4);x.lineTo(ax,ly+4);x.moveTo(bx,ly-4);x.lineTo(bx,ly+4);x.stroke();
+ x.fillText(P.type==='fib'?`L ${P.L} cm · ×φ`:`L ${P.L} cm`,Math.min(bx+6,W-70),ly+4);
+}
+
+function applyParams(){
+ const th=P.angle*Math.PI/180;d={x:Math.cos(th),y:Math.sin(th)};n={x:-Math.sin(th),y:Math.cos(th)};
+ if(n.y<-1e-9||(Math.abs(n.y)<1e-9&&n.x<0))n={x:-n.x,y:-n.y};
+ buildFib();buildBands();buildStripes();buildPeaks();resetFacade();drawInset();
+}
+function loadFacade(k){key=k;P={...PRESETS[k]};document.documentElement.style.setProperty('--ac',P.color);buildPanel();applyParams()}
+
+/* ───────── input ───────── */
+cv.addEventListener('pointerdown',e=>{
+ if(!S||S.phase==='complete')return;setAuto(false);const p=s2uv(e.clientX,e.clientY);
+ if(P.type==='dimple'){press(p);return}
+ if(S.phase==='place')startDrag();
+ dragging=true;grab={pu:p.u,pv:p.v,u:S.u,dev:S.dev};cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove',e=>{
+ if(!dragging||S.phase!=='drag')return;const p=s2uv(e.clientX,e.clientY),b=bands[S.k];
+ const nu=grab.u+(p.u-grab.pu);if(nu>S.u)S.u=Math.min(b.u1,nu);S.dev=grab.dev+(p.v-grab.pv);
+ pushTrace();liveDev();if(S.u>=b.u1-.01){dragging=false;finishBand()}
+});
+['pointerup','pointercancel'].forEach(ev=>cv.addEventListener(ev,()=>dragging=false));
+$('bAuto').onclick=()=>setAuto(!auto);
+$('bReset').onclick=()=>resetFacade();
+$('bLang').onclick=()=>{lang=lang==='sk'?'en':'sk';$('bLang').textContent=lang==='sk'?'EN':'SK';$('sim').textContent=t('sim');$('bReset').textContent=t('reset');
+ $('again').textContent=t('again');$('nextf').textContent=t('next');setAuto(auto);buildPanel();drawInset();updInstr();updHud()};
+$('again').onclick=()=>resetFacade();
+const SHARE_URL='https://lucia-malickova.github.io/3d-canelur/';
+$('bQR').onclick=()=>{
+ $('qr').hidden=false;$('qru').textContent=SHARE_URL;const bx=$('qrbox');
+ if(!bx.dataset.done&&window.QRCode){new QRCode(bx,{text:SHARE_URL,width:520,height:520,correctLevel:QRCode.CorrectLevel.M});bx.dataset.done='1'}
+};
+$('qrClose').onclick=()=>$('qr').hidden=true;
+$('qr').onclick=e=>{if(e.target.id==='qr')$('qr').hidden=true};
+$('nextf').onclick=()=>loadFacade(KEYS[(KEYS.indexOf(key)+1)%KEYS.length]);
+$('gear').onclick=()=>{panelOpen=!panelOpen;$('panel').hidden=!panelOpen;layout();drawInset()};
+addEventListener('keydown',e=>{
+ if(e.target.tagName==='INPUT')return;
+ if(e.code==='Space'){e.preventDefault();setAuto(!auto)}
+ else if(e.key==='r'||e.key==='R')resetFacade();
+ else if(e.key==='h'||e.key==='H'){panelOpen=!panelOpen;$('panel').hidden=!panelOpen;layout();drawInset()}
+ else if(e.key>='1'&&e.key<='6')loadFacade(KEYS[+e.key-1]);
+});
+let rz=null;addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{layout();drawInset()},120)});
+
+/* ───────── loop ───────── */
+let last=performance.now();
+function frame(now){
+ const dt=Math.min(.05,(now-last)/1000);last=now;update(dt);
+ ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#0b0d0f';ctx.fillRect(0,0,vw,vh);
+ ctx.drawImage(work,0,0,vw,vh);
+ ctx.save();clipWall(ctx);
+ const b=bands[S.k];if(b&&P.type!=='dimple'&&S.phase==='drag')drawBandGrooves(ctx,b,b.u0,S.u);
+ drawClipped();ctx.restore();
+ drawLabels();drawFloaters();
+ requestAnimationFrame(frame);
+}
+
+/* ───────── init ───────── */
+$('panel').hidden=!panelOpen;
+$('sim').textContent=t('sim');$('bReset').textContent=t('reset');$('again').textContent=t('again');$('nextf').textContent=t('next');
+P={...PRESETS[key]};layout();loadFacade('NNE');setAuto(true);
+requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>
